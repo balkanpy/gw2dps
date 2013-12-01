@@ -18,12 +18,9 @@ Instant:
 Sustained:
   Same as instant but done over 5 seconds. 
   
-CAUTION:
-
-  This program reads guild wars 2 process memory to get the target health. This may be viewed as illegal based on the
-  guild wars 2 agreement. I take no responsability if a ban occur because of htis app
-  
-  Personally i think getting banned for using this is exteremely unlikely, so use at your own discretion. 
+Note: 
+  If you lick on the app, it will take mouse and keyboard focus away from the game, so position it somehwere you won't
+  accidently press on it. I like to place at the top of the window where the target's health bar appears. 
   
 Features:
   - Max values are displayed in RED for 5seconds when they occur. Damage is still being calculated so if a new max occrus
@@ -48,3 +45,9 @@ REQUIREMENTS:
     you need to manually select the target before attacking it. 
 
   
+WARNNING:
+
+  This program reads guild wars 2 process memory to get the target health. This may be viewed as illegal based on the
+  guild wars 2 agreement. I take no responsability if a ban occur because of htis app
+  
+  Personally i think getting banned for using this is exteremely unlikely, so use at your own discretion. 
