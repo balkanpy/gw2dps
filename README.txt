@@ -1,1 +1,1 @@
-DPS Meter for Guild Wars 2
+Guild Wars 2 DPS meter.
