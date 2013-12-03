@@ -55,3 +55,7 @@ WARNNING:
   guild wars 2 agreement. I take no responsability if a ban occur because of htis app
   
   Personally i think getting banned for using this is exteremely unlikely, so use at your own discretion. 
+  
+Software info: 
+PYTHON 2.7.3
+PYINSTALLER 2.1 used for packaging as exe. 
