@@ -3,6 +3,7 @@ A DPS Meter for Guild Wars 2. The meter reads the selected target's health
 and calculates the dps done.
 """
 from ConfigParser import ConfigParser
+from ui.elements import HealthBar, DamageDisplay, SummaryTab
 from ctypes import windll
 import Tkinter as tk
 import subprocess
@@ -23,54 +24,7 @@ INCOMBAT_VALUE = 1065353216
 CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET'],
                'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE']}
 
-def last_nonzero_value_index(lst):
-    """
-    Return index of the last non-zeron value. If no zeros found, return None
-    """
-    for index, value in enumerate(reversed(lst)):
-        if value != 0:
-            return len(lst) - 1 - index
-    return None
-
-class SummaryTab(tk.Frame):
-    """
-    Fram that will pop up when hovered over the damage indicators
-    """
-    def __init__(self, *args, **kwargs):
-
-        if 'text' in kwargs:
-            text = kwargs.pop('text')
-        else:
-            text = ''
-
-        tk.Frame.__init__(self, *args, **kwargs)
-        tk.Label(self, text=text, font=("Helvetica", 8), width=8,
-                 fg='white', bg='#222222', anchor=tk.E).grid(row=0,column=0)
-
-        self._value1label = tk.Label(self, text='', font=("Helvetica", 8),
-                                     width=6, bg='#222222',
-                                     fg='red', anchor=tk.W)
-
-        self._value2label = tk.Label(self, text='', font=("Helvetica", 8),
-                                     fg='orange',width=6,
-                                     bg='#222222', anchor=tk.W)
-
-        self._value1label.grid(row=0, column=1)
-        self._value2label.grid(row=0, column=2)
-        # inital values
-        self.value1, self.value2 = None, None
-
-    def setvalues(self, value1, value2):
-        """
-        Set the values in the labels only if they are different
-        """
-        if value1 != self.value1:
-            self._value1label.config(text='%s' % value1)
-            self.value1 = value1
-
-        if value2 != self.value2:
-            self._value2label.config(text='%s' % value2)
-            self.value2 = value2
+BACKGROUND ='#222222'
 
 class DamageMeter:
     """
@@ -115,8 +69,11 @@ class DamageMeter:
         no target is selected.
         """
         ptrail = self._proc.pointer_trail(self._health_base,
-                                TARGET_HEALTH_OFFSET,
-                                rtntype='float')
+                                          TARGET_HEALTH_OFFSET,
+                                          rtntype='float')
+        max_health = -1
+        if ptrail.addr:
+            max_health = self._proc.read_memory(ptrail.addr + 0x4, 'float')
 
         health = ptrail.value if ptrail.value else 0
 
@@ -134,9 +91,9 @@ class DamageMeter:
                 self._target_change = True
 
         self._ptargetaddr = ptrail.addr
-        return health
+        return health, max_health
 
-    def get_dmg(self):
+    def target_health_values(self, normalize=False):
         """
         Get the damage done on the target. Damage is
         calculated based on health[n] - health[n-1].
@@ -144,15 +101,18 @@ class DamageMeter:
         This method needs to be called periodically at the specified sample
         period (ms) for everything to work properly
         """
-        health = self.get_health()
+        health, max_health = self.get_health()
         dmg = 0
         if health != -1 and not self._target_change:
             # There is a target selected and htis is the same target on the
             # previous iteration. Calculate the dmg
             dmg = self._prev_health - health
 
+        if normalize:
+            dmg = (dmg / max_health)*10000
+
         self._prev_health = health
-        return dmg if dmg > 0 else 0
+        return dmg if dmg > 0 else 0, health, max_health
 
     def calculate_dps(self, sample_lst, dmg, sample_window_size=1):
         """
@@ -182,118 +142,6 @@ class DamageMeter:
             del sample_lst[0]
         return int(dps)
 
-class DamageDisplay(tk.Frame):
-    """
-    TK frame used fro displaying the damage
-    """
-    def __init__(self, root, text, refresh_ms, *args, **kwargs):
-        tk.Frame.__init__(self, root, *args, **kwargs)
-        bg = kwargs.get('bg')
-
-        tk.Label(self, font=('times', 15, 'bold'), borderwidth=0,
-                 text=text, bg=bg, fg='white', anchor=tk.E, width=8).grid(row=0)
-
-        self._label = tk.Label(self, font=(None, 15), width=6, bg=bg)
-        self._label.grid(row=0, column=1)
-
-        self._ms = refresh_ms
-        self._max_display_ticks = 0
-
-        self._incombat_samples = []
-        self.prev_incombat_avg = 0
-        self.max = 0
-
-        # dict to store the info about the display
-        self._display_info = {'value': 0,
-                              'font': ('times',15, 'bold'),
-                              'colour': 'white'}
-
-    def _display_max(self, period=3):
-        """
-        Display the max dps for the specified period in seconds
-
-        period - Number of seconds to keep the display
-        """
-        self.freeze_display(self.max, period, colour='red')
-
-    def freeze_display(self, value, period, **kwargs):
-        """
-        Freeze the display to display the value for the speficied period (secs)
-        """
-        self._max_display_ticks = int(period*1000/self._ms)
-        kwargs['overwrite'] = True
-        self._set_display(value, **kwargs)
-
-    def _set_display(self, value,
-                     font='time',
-                     size=15,
-                     colour='white',
-                     typeface='bold',
-                     overwrite=False):
-        """
-        Set the display with the specified value. The kwargs determined the
-        colour, size, typeface and font of the text.
-
-        overwrite - change display even if it was "frozen"
-        """
-        if not self._isfrozen() or overwrite:
-            self._display_info['font'] = (font, size, typeface)
-            self._display_info['value'] = value
-            self._display_info['colour'] = colour
-
-    def _isfrozen(self):
-        """
-        Return True if the display is set as frozen, False other wise.
-        A display can only be frozen for the _max_display_ticks. When
-        _max_display_ticks is 0, the display is "defrosed"
-        """
-        rtn = False
-        if self._max_display_ticks > 0:
-            rtn = True
-            self._max_display_ticks -= 1
-        return rtn
-
-    def update_display(self):
-        """
-        Updates the display
-        """
-        value = self._display_info['value']
-        font = self._display_info['font']
-        fg = self._display_info['colour']
-
-        self._label.config(text = '%s' % value,
-                   fg=fg, anchor=tk.W, font=font)
-
-    def display_dps(self, dps, incombat_indicator):
-        """
-        Display the dps.
-
-        dps - dps to display
-
-        incomabt_indicator - Used to calculate the incombat averages.
-                    This needs to be True if in combat false otherwises
-        """
-        if self.max < dps:
-            self.max = dps
-            self._display_max()
-
-        if incombat_indicator:
-            self._incombat_samples.append(dps)
-        else:
-            # out of combat, calculate and display the averages
-            if self._incombat_samples:
-                nzero = last_nonzero_value_index(self._incombat_samples)
-                if nzero:
-                    nzero += 1
-                new_lst = self._incombat_samples[:nzero]
-                self.prev_incombat_avg = sum(new_lst)/len(new_lst)
-                self.freeze_display(self.prev_incombat_avg, 5, colour='orange')
-                self._incombat_samples = []
-
-        self._set_display(dps)
-        self.update_display()
-
-
 class MainApp(tk.Tk):
     """
     Main tk app
@@ -303,11 +151,16 @@ class MainApp(tk.Tk):
         self.overrideredirect(True)
         label = tk.Label(self, text="Click & drag to move",
                          font=("Helvetica", 8), fg='white',
-                         bg='#222222', anchor=tk.E)
-        label.grid(row=0, column=0)
+                         bg=BACKGROUND, anchor=tk.W)
 
+        label.grid(row=0, column=0, columnspan=2)
         tk.Button(self, text='x', font=("Times", 6), command=self.quit,
-                  bg='#222222', fg='white').grid(row=0, column=1)
+                  bg=BACKGROUND, fg='white').grid(row=0, column=2)
+
+        self._normalize = tk.BooleanVar()
+        self._thealth_display = tk.BooleanVar()
+        self._normalize.set(False)
+        self._thealth_display.set(False)
 
         self._ms = kwargs.get('ms', 250)
         self._dmg = DamageMeter(ms=self._ms)
@@ -317,14 +170,18 @@ class MainApp(tk.Tk):
 
         # isntant dps display
         instant, sustained = "Instant:", "Sustained:"
-        self.instant = DamageDisplay(self, instant, self._ms, bg='#222222')
-        self.instant.grid(row=1, column=0)
-        self._pop_up_frame1 = SummaryTab(self, text=instant)
+        self.instant = DamageDisplay(self, instant, self._ms, bg=BACKGROUND)
+        self.instant.grid(row=2, column=1)
+        self._pop_up_frame1 = SummaryTab(self, text=instant, bg=BACKGROUND)
 
         # sustainted dps
-        self.sustained = DamageDisplay(self, sustained, self._ms, bg='#222222')
-        self._pop_up_frame2 = SummaryTab(self, text=sustained)
-        self.sustained.grid(row=2, column=0)
+        self.sustained = DamageDisplay(self, sustained, self._ms, bg=BACKGROUND)
+        self._pop_up_frame2 = SummaryTab(self, text=instant, bg=BACKGROUND)
+        self.sustained.grid(row=3, column=1)
+
+        # Create the Health Bar
+        self.healthbar = HealthBar(self, bg=BACKGROUND)
+        self.healthbar.attributes('-alpha', 0.6)
 
         label.bind("<ButtonPress-1>", self._start_move)
         label.bind("<ButtonRelease-1>", self._stop_move)
@@ -339,8 +196,8 @@ class MainApp(tk.Tk):
         On mouseover display the summary tab
         """
         if event.type == '7':
-            self._pop_up_frame1.grid()
-            self._pop_up_frame2.grid()
+            self._pop_up_frame1.grid(row=5, column=1)
+            self._pop_up_frame2.grid(row=6, column=1)
         else:
             self._pop_up_frame1.grid_forget()
             self._pop_up_frame2.grid_forget()
@@ -349,7 +206,7 @@ class MainApp(tk.Tk):
         """
         Main loop of the app
         """
-        dps = self._dmg.get_dmg()
+        dps, health, mhealth = self._dmg.target_health_values()
         # instand dps is the dps done in one second
         instant_dps =  self._dmg.calculate_dps(self._instant_dps, dps)
         # sustained dps is calculated over 5 seconds
@@ -366,8 +223,21 @@ class MainApp(tk.Tk):
         self._pop_up_frame2.setvalues(self.sustained.max,
                                       self.sustained.prev_incombat_avg)
 
+        health = health if health > 0 else 0
+        mhealth = mhealth if mhealth > 0 else 0
+
+        self.healthbar.update_health(health, mhealth)
         # loop back to this method
         self.after(self._ms, self.run)
+
+    def _reset_values(self):
+        """
+        Reset the max, and combat average values (Not Fully Implemented!!!)
+        """
+        self.instant.reset()
+        self.sustained.reset()
+        self._sustained_dps = []
+        self._instant_dps = []
 
     def _start_move(self, event):
         """
@@ -408,7 +278,7 @@ if __name__ == '__main__':
                 globals()[prefix + '_' + suffix] = val
 
     app = MainApp()
-    app.config(background='#222222')
+    app.config(background=BACKGROUND)
     app.wm_attributes('-toolwindow', 1)
     app.wm_attributes("-topmost", 1)
     app.attributes("-alpha", 0.6)
