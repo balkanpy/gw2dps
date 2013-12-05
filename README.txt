@@ -12,6 +12,12 @@ be a sum of the DPS of all the players. This occurins because it measures
 the DPS taken by a target. To measure your own personal DPS, make sure you are 
 the only one attacking your target. 
 
+
+USSAGE:
+  Start Guild Wars 2, and wait for it to load into the Character Select Screen
+  before starting the DPS Meter. 
+
+
 As of v0.5-alpha, there are two DPS values displayes.
 
 Instant:

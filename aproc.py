@@ -16,20 +16,22 @@ STRUCT_CTYPE_CODE_AND_SIZE =  { 'short' : ('h' , 2),
                                 'unsigned_short' : ('H', 2),
                                 'int'   : ('i', 4),
                                 'float' : ('f', 4)}
-def value_to_gsc(value):
-    copper = value%100
-    silver = int(value/100)%100
-    gold = int(value/10000)%10000
 
-    return (gold, silver, copper)
+def GetWindowThreadProcessId(hwnd):
+    """
+    GetWindowThreadProcessId
+    """
+    pid = c_int(0)
+    windll.user32.GetWindowThreadProcessId(hwnd, byref(pid))
+    return pid.value
 
-def convert_float(value):
-    try:
-        value = ('%s' % (hex(value))).replace('0x', '')
-        value = struct.unpack('!f', (value).decode('hex'))[0]
-    except:
-        value = 0.0
-    return value
+def FindWindow(class_name, window_text):
+    """
+    FindWindow Function
+    """
+    return windll.user32.FindWindowA(c_char_p(class_name),
+                                     c_char_p(window_text))
+
 
 class MODULEINFO(Structure):
     _fields_ = [

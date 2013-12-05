@@ -6,9 +6,7 @@ from ConfigParser import ConfigParser
 from ui.elements import HealthBar, DamageDisplay, SummaryTab
 from ctypes import windll
 import Tkinter as tk
-import subprocess
 import aproc
-import re
 import os
 import sys
 
@@ -25,7 +23,6 @@ CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET'],
                'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE']}
 
 BACKGROUND ='#222222'
-
 class DamageMeter:
     """
     DamageMeter class used for getting the dmg done onto target, and calculate
@@ -34,15 +31,18 @@ class DamageMeter:
     for the calculations to be accurate
     """
     def __init__(self, ms=500):
-        tasklist = subprocess.check_output(
-                   'tasklist /FI "Imagename eq Gw2.exe"')
+        hwnd = aproc.FindWindow('ArenaNet_Dx_Window_Class', 'Guild Wars 2')
 
-        try:
-            pid = int(re.search(r'Gw2.exe\s*(\d+)\s*', tasklist).group(1))
-        except Exception:
-            err = "Please start Guild Wars 2 before starting the DPS Meter"
+        if hwnd:
+            pid = aproc.GetWindowThreadProcessId(hwnd)
+        else:
+            err = "Please start Guild Wars 2, and wait for " + \
+                  "the Character Select Screen to load before " + \
+                  "starting the DPS Meter"
+
             windll.user32.MessageBoxA(None, err, 'DPS Meter Error', 0)
             sys.exit(-1)
+
         self._proc = aproc.Proc(pid)
         self._ms = ms
 
