@@ -3,19 +3,30 @@ A DPS Meter for Guild Wars 2. The meter reads the selected target's health
 and calculates the dps done.
 """
 from ConfigParser import ConfigParser
-from ui.elements import HealthBar, DamageDisplay, SummaryTab
+from ui.elements import HealthBar, DPSDisplay
+from ui.elements import DisplayEnableCheckbox
 from ctypes import windll
 import Tkinter as tk
 import aproc
 import os
 import sys
 
-TARGET_HEALTH_BASE = 0x13EB0B4
+TARGET_HEALTH_BASE = 0x013F2AB4
 TARGET_HEALTH_OFFSET = [0x34, 0x150, 0x8]
+# if target is a structure, i.e dummy, wall etc.
+TARGET_HEALTH_OBJ_BASE = 0x013F2B18
+TARGET_HEALTH_OBJ_OFFSET = [0x34, 0x168, 0x8]
 
-INCOMBAT_ADDR1 = 0x0171654C
-INCOMBAT_ADDR2 = 0x01715970
+
+INCOMBAT_ADDR1 = 0x0171DF1C
+INCOMBAT_ADDR2 = 0x0171D330
 INCOMBAT_VALUE = 1065353216
+
+TARGET_TYPE_INDICATOR_ADDR = 0x0131DF60
+NO_TARGET_SELECTED = 1149698048
+REGULAR_TARGET_SELECTED = 1149009920
+OBJ_TARGET_SELECTED = 1149435904
+
 
 # Ability to change the addr offsets without changing the code.
 # useful for when it is packaged as .exe
@@ -44,10 +55,20 @@ class DamageMeter:
             sys.exit(-1)
 
         self._proc = aproc.Proc(pid)
+        self.gw2base = self._proc.base_addr
+        self._target_addr_table = \
+        {
+            # Selected Target type: (base addr, offsets)
+            # "regular" target, enemies
+            REGULAR_TARGET_SELECTED: (self.gw2base + TARGET_HEALTH_BASE,
+                                      TARGET_HEALTH_OFFSET),
+            # object target, e.i walls, dummies, etc
+            OBJ_TARGET_SELECTED: (self.gw2base + TARGET_HEALTH_OBJ_BASE,
+                                  TARGET_HEALTH_OBJ_OFFSET)
+        }
         self._ms = ms
 
         self._sample_size_1s = int(1000/self._ms)
-        self.gw2base = self._proc.find_base_addr("Gw2.exe")
         self._health_base = self.gw2base + TARGET_HEALTH_BASE
 
         self._prev_health = 0
@@ -68,9 +89,19 @@ class DamageMeter:
         Returns the health of the target. Health and also be -1 to indicate
         no target is selected.
         """
-        ptrail = self._proc.pointer_trail(self._health_base,
-                                          TARGET_HEALTH_OFFSET,
+        target_type = self._proc.read_memory(self.gw2base + TARGET_TYPE_INDICATOR_ADDR,
+                                             rtntype='int')
+
+        if target_type in self._target_addr_table:
+            health_base_addr = self._target_addr_table[target_type][0]
+            health_offset = self._target_addr_table[target_type][1]
+        else:
+            return -1, -1
+
+        ptrail = self._proc.pointer_trail(health_base_addr,
+                                          health_offset,
                                           rtntype='float')
+
         max_health = -1
         if ptrail.addr:
             max_health = self._proc.read_memory(ptrail.addr + 0x4, 'float')
@@ -142,122 +173,31 @@ class DamageMeter:
             del sample_lst[0]
         return int(dps)
 
-class MainApp(tk.Tk):
-    """
-    Main tk app
-    """
+
+class Main(tk.Tk):
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
-        self.overrideredirect(True)
-        label = tk.Label(self, text="Click & drag to move",
-                         font=("Helvetica", 8), fg='white',
-                         bg=BACKGROUND, anchor=tk.W)
+        self.dps_display = DisplayEnableCheckbox(self, "DPS",
+                                                 DPSDisplay, bg=BACKGROUND)
+        self.dps_display.grid(row=0, column=0)
 
-        label.grid(row=0, column=0, columnspan=2)
-        tk.Button(self, text='x', font=("Times", 6), command=self.quit,
-                  bg=BACKGROUND, fg='white').grid(row=0, column=2)
+        self.health_bar = DisplayEnableCheckbox(self, "Taget Health",
+                                                HealthBar, bg=BACKGROUND)
+        self.health_bar.grid(row=1, column=0)
+        self._dmg = DamageMeter(ms=250)
 
-        self._normalize = tk.BooleanVar()
-        self._thealth_display = tk.BooleanVar()
-        self._normalize.set(False)
-        self._thealth_display.set(False)
-
-        self._ms = kwargs.get('ms', 250)
-        self._dmg = DamageMeter(ms=self._ms)
-        # lists for storing the dmg samples
         self._sustained_dps = []
         self._instant_dps = []
-
-        # isntant dps display
-        instant, sustained = "Instant:", "Sustained:"
-        self.instant = DamageDisplay(self, instant, self._ms, bg=BACKGROUND)
-        self.instant.grid(row=2, column=1)
-        self._pop_up_frame1 = SummaryTab(self, text=instant, bg=BACKGROUND)
-
-        # sustainted dps
-        self.sustained = DamageDisplay(self, sustained, self._ms, bg=BACKGROUND)
-        self._pop_up_frame2 = SummaryTab(self, text=instant, bg=BACKGROUND)
-        self.sustained.grid(row=3, column=1)
-
-        # Create the Health Bar
-        self.healthbar = HealthBar(self, bg=BACKGROUND)
-        self.healthbar.attributes('-alpha', 0.6)
-
-        label.bind("<ButtonPress-1>", self._start_move)
-        label.bind("<ButtonRelease-1>", self._stop_move)
-        label.bind("<B1-Motion>", self._motion)
-        # bind the mouse over display for the summary tabs
-        for binder in [self.sustained, self.instant]:
-            binder.bind("<Enter>", self.display_on_mouse_over)
-            binder.bind("<Leave>", self.display_on_mouse_over)
-
-    def display_on_mouse_over(self, event):
-        """
-        On mouseover display the summary tab
-        """
-        if event.type == '7':
-            self._pop_up_frame1.grid(row=5, column=1)
-            self._pop_up_frame2.grid(row=6, column=1)
-        else:
-            self._pop_up_frame1.grid_forget()
-            self._pop_up_frame2.grid_forget()
 
     def run(self):
-        """
-        Main loop of the app
-        """
-        dps, health, mhealth = self._dmg.target_health_values()
-        # instand dps is the dps done in one second
-        instant_dps =  self._dmg.calculate_dps(self._instant_dps, dps)
-        # sustained dps is calculated over 5 seconds
-        sustained_dps = self._dmg.calculate_dps(self._sustained_dps,
-                                                dps, sample_window_size=5)
+        dps, chealth, mhealth = self._dmg.target_health_values()
+        inst = self._dmg.calculate_dps(self._instant_dps, dps)
+        sustained = self._dmg.calculate_dps(self._sustained_dps, dps,
+                                            sample_window_size=5)
 
-        incombat_indicator = self._dmg.incombat()
-
-        self.instant.display_dps(instant_dps, incombat_indicator)
-        self.sustained.display_dps(sustained_dps, incombat_indicator)
-
-        self._pop_up_frame1.setvalues(self.instant.max,
-                                      self.instant.prev_incombat_avg)
-        self._pop_up_frame2.setvalues(self.sustained.max,
-                                      self.sustained.prev_incombat_avg)
-
-        health = health if health > 0 else 0
-        mhealth = mhealth if mhealth > 0 else 0
-
-        self.healthbar.update_health(health, mhealth)
-        # loop back to this method
-        self.after(self._ms, self.run)
-
-    def _reset_values(self):
-        """
-        Reset the max, and combat average values (Not Fully Implemented!!!)
-        """
-        self.instant.reset()
-        self.sustained.reset()
-        self._sustained_dps = []
-        self._instant_dps = []
-
-    def _start_move(self, event):
-        """
-        Start Move
-        """
-        self.x , self.y = event.x, event.y
-
-    def _stop_move(self, event):
-        """
-        Stop move
-        """
-        self.x, self.y = None, None
-
-    def _motion(self, event):
-        """
-        Bind method for B1-Motion
-        """
-        dx = event.x - self.x
-        dy = event.y - self.y
-        self.geometry("+%s+%s" % (self.winfo_x() + dx, self.winfo_y() + dy))
+        self.dps_display.update_data(inst, sustained, self._dmg.incombat())
+        self.health_bar.update_data(chealth, mhealth)
+        self.after(250, self.run)
 
 if __name__ == '__main__':
     # ability to change the memory addresses, and offesets without chaning
@@ -277,10 +217,12 @@ if __name__ == '__main__':
                     val = int(val, 0)
                 globals()[prefix + '_' + suffix] = val
 
-    app = MainApp()
-    app.config(background=BACKGROUND)
-    app.wm_attributes('-toolwindow', 1)
+    app = Main()
     app.wm_attributes("-topmost", 1)
-    app.attributes("-alpha", 0.6)
+    app.geometry("%dx%d" % (150, 50))
+    app.resizable(width=False, height=False)
+    app.wm_title("DPS Display by balkanpy")
+    app.health_bar.set_object_attributes('-alpha', 0.6)
+    app.dps_display.set_object_attributes('-alpha', 0.6)
     app.run()
     app.mainloop()

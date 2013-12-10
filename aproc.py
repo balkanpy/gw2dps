@@ -5,6 +5,7 @@ dps meter.
 """
 from ctypes import *
 import struct
+import os
 
 kernel32 = windll.kernel32
 psapi = WinDLL('Psapi.dll')
@@ -58,7 +59,9 @@ class Proc(object):
         self.hproc = None
         self.pid = pid
         self.open_process()
-
+        self.open_process()
+        self.base_addr = self.find_base_addr(self.get_image_name())
+        
     def open_process(self):
         self.hproc = kernel32.OpenProcess(PROCESS_ALL_ACCESS, False, self.pid)
         return self.hproc
@@ -87,7 +90,7 @@ class Proc(object):
         """
         img = (c_char*MAX_PATH)()
         psapi.GetProcessImageFileNameA(self.hproc, img, MAX_PATH)
-        return img.value
+        return os.path.split(img.value)[-1]
 
     def enum_modules(self):
         """

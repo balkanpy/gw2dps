@@ -39,9 +39,11 @@ class FloatingWindow(tk.Toplevel):
         """
         Bind method for B1-Motion
         """
-        dx = event.x - self.x
-        dy = event.y - self.y
-        self.geometry("+%s+%s" % (self.winfo_x() + dx, self.winfo_y() + dy))
+        if self.x is not None \
+            and self.y is not None:
+            dx = event.x - self.x
+            dy = event.y - self.y
+            self.geometry("+%s+%s" % (self.winfo_x() + dx, self.winfo_y() + dy))
 
 
 class Display(tk.Frame):
@@ -95,6 +97,10 @@ class Display(tk.Frame):
             rtn = True
             self._max_display_ticks -= 1
         return rtn
+
+    def _set_background(self, bg):
+        for widget in [self, self._label]:
+            widget.config(bg=bg)
 
     def update_display(self):
         """
