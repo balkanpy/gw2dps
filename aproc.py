@@ -59,7 +59,6 @@ class Proc(object):
         self.hproc = None
         self.pid = pid
         self.open_process()
-        self.open_process()
         self.base_addr = self.find_base_addr(self.get_image_name())
         
     def open_process(self):
