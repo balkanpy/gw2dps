@@ -23,15 +23,16 @@ INCOMBAT_ADDR2 = 0x0171D330
 INCOMBAT_VALUE = 1065353216
 
 TARGET_TYPE_INDICATOR_ADDR = 0x0131DF60
-NO_TARGET_SELECTED = 1149698048
-REGULAR_TARGET_SELECTED = 1149009920
-OBJ_TARGET_SELECTED = 1149435904
+TARGET_TYPE_NONE = 1149386752
+TARGET_TYPE_REGULAR = 1148387328
+TARGET_TYPE_OBJ = 1149009920
 
 
 # Ability to change the addr offsets without changing the code.
 # useful for when it is packaged as .exe
 CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET'],
-               'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE']}
+               'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE'],
+               'TARGET_TYPE': ['INDICATOR_ADDR', 'NONE', 'REGULAR', 'OBJ']}
 
 BACKGROUND ='#222222'
 class DamageMeter:
@@ -60,10 +61,10 @@ class DamageMeter:
         {
             # Selected Target type: (base addr, offsets)
             # "regular" target, enemies
-            REGULAR_TARGET_SELECTED: (self.gw2base + TARGET_HEALTH_BASE,
+            TARGET_TYPE_REGULAR: (self.gw2base + TARGET_HEALTH_BASE,
                                       TARGET_HEALTH_OFFSET),
             # object target, e.i walls, dummies, etc
-            OBJ_TARGET_SELECTED: (self.gw2base + TARGET_HEALTH_OBJ_BASE,
+            TARGET_TYPE_OBJ: (self.gw2base + TARGET_HEALTH_OBJ_BASE,
                                   TARGET_HEALTH_OBJ_OFFSET)
         }
         self._ms = ms
@@ -86,7 +87,7 @@ class DamageMeter:
 
     def get_health(self):
         """
-        Returns the health of the target. Health and also be -1 to indicate
+        Returns the health of the target. Health can also be -1 to indicate
         no target is selected.
         """
         target_type = self._proc.read_memory(self.gw2base + TARGET_TYPE_INDICATOR_ADDR,
@@ -135,7 +136,7 @@ class DamageMeter:
         health, max_health = self.get_health()
         dmg = 0
         if health != -1 and not self._target_change:
-            # There is a target selected and htis is the same target on the
+            # There is a target selected and this is the same target on the
             # previous iteration. Calculate the dmg
             dmg = self._prev_health - health
 
