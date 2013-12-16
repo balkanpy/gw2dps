@@ -28,7 +28,7 @@ INCOMBAT_VALUE = 1065353216
 
 # Ability to change the addr offsets without changing the code.
 # useful for when it is packaged as .exe
-CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET'],
+CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET', 'OBJ_BASE', 'OBJ_OFFSET'],
                'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE']}
 
 BACKGROUND ='#222222'
