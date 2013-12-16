@@ -3,13 +3,16 @@ A DPS Meter for Guild Wars 2. The meter reads the selected target's health
 and calculates the dps done.
 """
 from ConfigParser import ConfigParser
-from ui.elements import HealthBar, DPSDisplay
+from ui.elements import HealthBar, DPSDisplay, Timer
 from ui.elements import DisplayEnableCheckbox
 from ctypes import windll
+import logging, logging.handlers
 import Tkinter as tk
 import aproc
 import os
 import sys
+
+
 
 TARGET_HEALTH_BASE = 0x013F2AB4
 TARGET_HEALTH_OFFSET = [0x34, 0x150, 0x8]
@@ -22,19 +25,15 @@ INCOMBAT_ADDR1 = 0x0171DF1C
 INCOMBAT_ADDR2 = 0x0171D330
 INCOMBAT_VALUE = 1065353216
 
-TARGET_TYPE_INDICATOR_ADDR = 0x0131DF60
-TARGET_TYPE_NONE = 1149698048
-TARGET_TYPE_REGULAR = 1149009920
-TARGET_TYPE_OBJ = 1149435904
-
 
 # Ability to change the addr offsets without changing the code.
 # useful for when it is packaged as .exe
 CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET'],
-               'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE'],
-               'TARGET_TYPE': ['INDICATOR_ADDR', 'NONE', 'REGULAR', 'OBJ']}
+               'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE']}
 
 BACKGROUND ='#222222'
+
+
 class DamageMeter:
     """
     DamageMeter class used for getting the dmg done onto target, and calculate
@@ -57,23 +56,26 @@ class DamageMeter:
 
         self._proc = aproc.Proc(pid)
         self.gw2base = self._proc.base_addr
-        self._target_addr_table = \
-        {
-            # Selected Target type: (base addr, offsets)
-            # "regular" target, enemies
-            TARGET_TYPE_REGULAR: (self.gw2base + TARGET_HEALTH_BASE,
-                                      TARGET_HEALTH_OFFSET),
-            # object target, e.i walls, dummies, etc
-            TARGET_TYPE_OBJ: (self.gw2base + TARGET_HEALTH_OBJ_BASE,
-                                  TARGET_HEALTH_OBJ_OFFSET)
-        }
+
+        self._possible_targets = [ (self.gw2base + TARGET_HEALTH_BASE,
+                                    TARGET_HEALTH_OFFSET),
+                                   (self.gw2base + TARGET_HEALTH_OBJ_BASE,
+                                    TARGET_HEALTH_OBJ_OFFSET)]
         self._ms = ms
 
         self._sample_size_1s = int(1000/self._ms)
         self._health_base = self.gw2base + TARGET_HEALTH_BASE
-
         self._prev_health = 0
         self._ptargetaddr = None
+
+    def get_health_value_pairs(self, target_addr):
+        """
+        Read the current health and max health at the specified addrs
+        """
+        if target_addr:
+            chealth = self._proc.read_memory(target_addr, rtntype='float')
+            mhealth = self._proc.read_memory(target_addr + 0x4, rtntype='float')
+            return chealth, mhealth
 
     def incombat(self):
         """
@@ -85,32 +87,38 @@ class DamageMeter:
         value2 = self._proc.read_memory(INCOMBAT_ADDR2)
         return value1 == 0 or value2 == INCOMBAT_VALUE
 
+    def selected_target(self):
+        """
+        Returns a tuple of (health address, current health, max health) of the
+        selected targed. If no tharget is selected returns a tuple of
+        (None, None, -1)
+        """
+        mhealth = -1
+
+        # go throught all the possible target types, and return the valid addrs
+        for addr, offset in self._possible_targets:
+            ptrail = self._proc.pointer_trail(addr,
+                                              offset,
+                                              rtntype='float')
+            if ptrail.addr:
+                break
+
+        if ptrail.addr:
+            mhealth = self._proc.read_memory(ptrail.addr + 0x4, 'float')
+
+        return ptrail.addr, ptrail.value, mhealth
+
     def get_health(self):
         """
         Returns the health of the target. Health can also be -1 to indicate
         no target is selected.
         """
-        target_type = self._proc.read_memory(self.gw2base + TARGET_TYPE_INDICATOR_ADDR,
-                                             rtntype='int')
+        taddr, thealth, mhealth = self.selected_target()
 
-        if target_type in self._target_addr_table:
-            health_base_addr = self._target_addr_table[target_type][0]
-            health_offset = self._target_addr_table[target_type][1]
-        else:
-            return -1, -1
-
-        ptrail = self._proc.pointer_trail(health_base_addr,
-                                          health_offset,
-                                          rtntype='float')
-
-        max_health = -1
-        if ptrail.addr:
-            max_health = self._proc.read_memory(ptrail.addr + 0x4, 'float')
-
-        health = ptrail.value if ptrail.value else 0
+        health = thealth if thealth else 0
 
         self._target_change = False
-        if ptrail.addr is None:
+        if taddr is None:
             # If ptrail is none no target selected
             # No target return -1
             health = -1
@@ -118,12 +126,12 @@ class DamageMeter:
                 if not self._proc.read_memory(self._ptargetaddr, rtntype='int'):
                     health = 0
         else:
-            if ptrail.addr != self._ptargetaddr:
+            if taddr != self._ptargetaddr:
                 # Target Change
                 self._target_change = True
 
-        self._ptargetaddr = ptrail.addr
-        return health, max_health
+        self._ptargetaddr = taddr
+        return health, mhealth
 
     def target_health_values(self, normalize=False):
         """
@@ -174,21 +182,51 @@ class DamageMeter:
             del sample_lst[0]
         return int(dps)
 
-
 class Main(tk.Tk):
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
-        self.dps_display = DisplayEnableCheckbox(self, "DPS",
+        self._ms = 250
+        self._dmg = DamageMeter(ms=self._ms)
+
+        self.dps_display = DisplayEnableCheckbox(self, "Display DPS",
                                                  DPSDisplay, bg=BACKGROUND)
         self.dps_display.grid(row=0, column=0)
 
-        self.health_bar = DisplayEnableCheckbox(self, "Taget Health",
+        self.health_bar = DisplayEnableCheckbox(self, "Display Taget Health",
                                                 HealthBar, bg=BACKGROUND)
         self.health_bar.grid(row=1, column=0)
-        self._dmg = DamageMeter(ms=250)
+
+        self.timer = DisplayEnableCheckbox(self, "Timer", Timer,
+                                           self._dmg, bg=BACKGROUND)
+        self.timer.grid(row=2, column=0)
+
 
         self._sustained_dps = []
         self._instant_dps = []
+
+        self._log = logging.getLogger('data')
+        self._log.setLevel(logging.DEBUG)
+        # reset the file
+        open('dps.txt', 'w').close()
+        handle = logging.handlers.RotatingFileHandler('dps.txt',
+                                                       maxBytes=1024*1024)
+        self._log.addHandler(handle)
+        self._tick = 0
+
+    def _check_health_change(self, chealth, mhealth):
+        """
+        """
+        rtn = chealth != self._max_min_health[0] or\
+                mhealth != self._max_min_health[1]
+        self._max_min_health = (chealth, mhealth)
+        print "Is health change", rtn
+        return rtn
+
+    def log_tofile(self, inst):
+        self._tick += 1
+        if self._tick >= int(1000/self._ms):
+            self._log.debug(inst)
+            self._tick = 0
 
     def run(self):
         dps, chealth, mhealth = self._dmg.target_health_values()
@@ -196,8 +234,13 @@ class Main(tk.Tk):
         sustained = self._dmg.calculate_dps(self._sustained_dps, dps,
                                             sample_window_size=5)
 
-        self.dps_display.update_data(inst, sustained, self._dmg.incombat())
+        incombat = self._dmg.incombat()
+        self.dps_display.update_data(inst, sustained, incombat)
         self.health_bar.update_data(chealth, mhealth)
+
+        if incombat:
+            self.log_tofile(inst)
+
         self.after(250, self.run)
 
 if __name__ == '__main__':
@@ -220,10 +263,11 @@ if __name__ == '__main__':
 
     app = Main()
     app.wm_attributes("-topmost", 1)
-    app.geometry("%dx%d" % (150, 50))
+    app.geometry("%dx%d" % (150, 75))
     app.resizable(width=False, height=False)
     app.wm_title("DPS Display by balkanpy")
     app.health_bar.set_object_attributes('-alpha', 0.6)
     app.dps_display.set_object_attributes('-alpha', 0.6)
+    app.timer.set_object_attributes('-alpha', 0.6)
     app.run()
     app.mainloop()
