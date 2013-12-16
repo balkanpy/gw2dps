@@ -270,4 +270,8 @@ if __name__ == '__main__':
     app.dps_display.set_object_attributes('-alpha', 0.6)
     app.timer.set_object_attributes('-alpha', 0.6)
     app.run()
+
+    #hide the console window
+    aproc.hide_window(None, sys.argv[0])
+
     app.mainloop()

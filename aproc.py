@@ -34,6 +34,19 @@ def FindWindow(class_name, window_text):
                                      c_char_p(window_text))
 
 
+def hide_window(class_name, window_text):
+    """
+    Hides the Window
+    """
+    hwnd = FindWindow(class_name, window_text)
+
+    if not hwnd:
+        return False
+
+    windll.user32.ShowWindow(hwnd, c_int(0))
+    return True
+
+
 class MODULEINFO(Structure):
     _fields_ = [
         ("lpBaseOfDll",     c_void_p),    # remote pointer
@@ -60,7 +73,7 @@ class Proc(object):
         self.pid = pid
         self.open_process()
         self.base_addr = self.find_base_addr(self.get_image_name())
-        
+
     def open_process(self):
         self.hproc = kernel32.OpenProcess(PROCESS_ALL_ACCESS, False, self.pid)
         return self.hproc
