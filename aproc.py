@@ -163,14 +163,22 @@ class Proc(object):
         pointed = self.read_memory(starting, 'int')
         ptrail = type('ptrail', (), {'addr': None, 'value': None})
 
-        if not pointed:
+        isvalid = lambda pointer: pointer > 0
+
+        if not isvalid(pointed):
             return ptrail
 
         for offset in offsets[:-1]:
             addr = pointed + offset
             pointed = self.read_memory(addr, 'int')
+            if not isvalid(pointed):
+                return ptrail
 
-        ptrail.addr = pointed + offsets[-1]
+        addr = pointed + offsets[-1]
+        if not isvalid(addr):
+            return ptrail
+
+        ptrail.addr = addr
         ptrail.value = self.read_memory(ptrail.addr, rtntype)
 
         return ptrail

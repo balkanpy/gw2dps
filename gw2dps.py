@@ -4,22 +4,25 @@ and calculates the dps done.
 """
 from ConfigParser import ConfigParser
 from ui.elements import HealthBar, DPSDisplay, Timer
-from ui.elements import DisplayEnableCheckbox
+from ui.elements import DisplayEnableCheckbox, Logger
 from ctypes import windll
-import logging, logging.handlers
 import Tkinter as tk
 import aproc
 import os
 import sys
+import shelve
 
-
+_DIR = os.path.split(__file__)[0]
+_DATADIR = os.path.join(_DIR, 'dat')
 
 TARGET_HEALTH_BASE = 0x013F2AB4
 TARGET_HEALTH_OFFSET = [0x34, 0x150, 0x8]
 # if target is a structure, i.e dummy, wall etc.
 TARGET_HEALTH_OBJ_BASE = 0x013F2B18
 TARGET_HEALTH_OBJ_OFFSET = [0x34, 0x168, 0x8]
-
+# target is a "world boss"
+TARGET_HEALTH_WBOSS_BASE = TARGET_HEALTH_OBJ_BASE
+TARGET_HEALTH_WBOSS_OFFSET = [0x34, 0x44, 0x3C, 0x17C, 0x8]
 
 INCOMBAT_ADDR1 = 0x0171DF1C
 INCOMBAT_ADDR2 = 0x0171D330
@@ -28,7 +31,9 @@ INCOMBAT_VALUE = 1065353216
 
 # Ability to change the addr offsets without changing the code.
 # useful for when it is packaged as .exe
-CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET', 'OBJ_BASE', 'OBJ_OFFSET'],
+CONFIG_DCT = { 'TARGET_HEALTH' : ['BASE', 'OFFSET',
+                                  'OBJ_BASE', 'OBJ_OFFSET',
+                                  'WBOSS_BASE', 'WBOSS_OFFSET'],
                'INCOMBAT': ['ADDR1', 'ADDR2', 'VALUE']}
 
 BACKGROUND ='#222222'
@@ -59,6 +64,8 @@ class DamageMeter:
 
         self._possible_targets = [ (self.gw2base + TARGET_HEALTH_BASE,
                                     TARGET_HEALTH_OFFSET),
+                                   (self.gw2base + TARGET_HEALTH_WBOSS_BASE,
+                                    TARGET_HEALTH_WBOSS_OFFSET),
                                    (self.gw2base + TARGET_HEALTH_OBJ_BASE,
                                     TARGET_HEALTH_OBJ_OFFSET)]
         self._ms = ms
@@ -100,11 +107,11 @@ class DamageMeter:
             ptrail = self._proc.pointer_trail(addr,
                                               offset,
                                               rtntype='float')
-            if ptrail.addr:
-                break
 
-        if ptrail.addr:
-            mhealth = self._proc.read_memory(ptrail.addr + 0x4, 'float')
+            if ptrail.addr and ptrail.value:
+                mhealth = self._proc.read_memory(ptrail.addr + 0x4, 'float')
+                if mhealth > 0:
+                    break
 
         return ptrail.addr, ptrail.value, mhealth
 
@@ -182,10 +189,15 @@ class DamageMeter:
             del sample_lst[0]
         return int(dps)
 
+
 class Main(tk.Tk):
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
         self._ms = 250
+        self._sustained_dps = []
+        self._instant_dps = []
+        self._tick = 0
+
         self._dmg = DamageMeter(ms=self._ms)
 
         self.dps_display = DisplayEnableCheckbox(self, "Display DPS",
@@ -201,31 +213,24 @@ class Main(tk.Tk):
         self.timer.grid(row=2, column=0)
 
 
-        self._sustained_dps = []
-        self._instant_dps = []
+        self._visable_object = { 'Health Bar'  : self.health_bar,
+                                 'DPS Display' : self.dps_display,
+                                 'Timer'       : self.timer}
 
-        self._log = logging.getLogger('data')
-        self._log.setLevel(logging.DEBUG)
-        # reset the file
-        open('dps.txt', 'w').close()
-        handle = logging.handlers.RotatingFileHandler('dps.txt',
-                                                       maxBytes=1024*1024)
-        self._log.addHandler(handle)
-        self._tick = 0
+        self.logger = Logger(self, "Log to file",
+                             os.path.join(_DIR, 'dps.txt'))
+        self.logger.grid(row=3, column=0)
 
-    def _check_health_change(self, chealth, mhealth):
-        """
-        """
-        rtn = chealth != self._max_min_health[0] or\
-                mhealth != self._max_min_health[1]
-        self._max_min_health = (chealth, mhealth)
-        print "Is health change", rtn
-        return rtn
+        self.load_data()
+        self.protocol('WM_DELETE_WINDOW', self._onclose)
 
     def log_tofile(self, inst):
+        """
+        Everysecond log the inst damage to the file
+        """
         self._tick += 1
         if self._tick >= int(1000/self._ms):
-            self._log.debug(inst)
+            self.logger.log(inst)
             self._tick = 0
 
     def run(self):
@@ -241,7 +246,33 @@ class Main(tk.Tk):
         if incombat:
             self.log_tofile(inst)
 
-        self.after(250, self.run)
+        self.after(self._ms, self.run)
+
+    def _onclose(self):
+        """
+        Shelve the positions when closing the app
+        """
+        if not os.path.exists(_DATADIR):
+            os.makedirs(_DATADIR)
+
+        dat = shelve.open(os.path.join(_DATADIR, 'gw2dps'))
+        for name, obj in self._visable_object.iteritems():
+            dat[name] = obj.get_position()
+        dat.close()
+
+        self.quit()
+
+
+    def load_data(self):
+        """
+        Load the shelve if it exists
+        """
+        if os.path.exists(os.path.join(_DATADIR, 'gw2dps.dat')):
+            dat = shelve.open(os.path.join(_DATADIR,'gw2dps'))
+            for name, obj in self._visable_object.iteritems():
+                if dat[name]:
+                    obj.set_position(*dat[name])
+            dat.close()
 
 if __name__ == '__main__':
     # ability to change the memory addresses, and offesets without chaning
@@ -263,14 +294,12 @@ if __name__ == '__main__':
 
     app = Main()
     app.wm_attributes("-topmost", 1)
-    app.geometry("%dx%d" % (150, 75))
     app.resizable(width=False, height=False)
     app.wm_title("DPS Display by balkanpy")
     app.health_bar.set_object_attributes('-alpha', 0.6)
     app.dps_display.set_object_attributes('-alpha', 0.6)
     app.timer.set_object_attributes('-alpha', 0.6)
     app.run()
-
     #hide the console window
     aproc.hide_window(None, sys.argv[0])
 

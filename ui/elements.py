@@ -12,7 +12,7 @@ def parsegeometry(geometry):
     m = re.match("(\d+)x(\d+)([-+]-?\d+)([-+]-?\d+)", geometry)
     if not m:
         raise ValueError("failed to parse geometry string")
-    return m.groups()#map(int, m.groups())
+    return m.groups()
 
 def ifobject(func):
     """
@@ -21,7 +21,7 @@ def ifobject(func):
     """
     def ifobject_dec(self, *args, **kwargs):
         if self._object_init:
-            func(self, *args, **kwargs)
+            return func(self, *args, **kwargs)
     return ifobject_dec
 
 def last_nonzero_value_index(lst):
@@ -371,8 +371,10 @@ class DamageDisplay(Display):
                 if nzero:
                     nzero += 1
                 new_lst = self._incombat_samples[:nzero]
-                self.prev_incombat_avg = sum(new_lst)/len(new_lst)
-                self.freeze_display(self.prev_incombat_avg, 5, colour='orange')
+                if new_lst:
+                    self.prev_incombat_avg = sum(new_lst)/len(new_lst)
+                    self.freeze_display(self.prev_incombat_avg, 5,
+                                        colour='orange')
                 self._incombat_samples = []
 
         self._set_display(dps)
@@ -401,6 +403,36 @@ class Checkbox(tk.Frame):
                                  variable=self.ckvalue, anchor=tk.W)
         self.ck.grid(row=1, column=1)
 
+        self._name = name
+        self.ck.config(command=self.checkbox_callback)
+
+    @property
+    def checkbox_value(self):
+        return self.ckvalue.get()
+
+    def checkbox_callback(self):
+        raise NotImplementedError("Checkbox callback not defined")
+
+class Logger(Checkbox):
+    """
+    """
+    def __init__(self, parent, name, fname, *args, **kwargs):
+        Checkbox.__init__(self, parent, name)
+        self._fname = fname
+        self._logging = False
+
+    def checkbox_callback(self):
+        if self.checkbox_value:
+            # clear file
+            self._filename = self._fname
+            open(self._filename, 'w').close()
+        self._logging = not self._logging
+
+    def log(self, value):
+        if self._logging:
+            with open(self._filename, 'a') as f:
+                f.write('%s\n' % value)
+
 
 class DisplayEnableCheckbox(Checkbox):
     """
@@ -417,7 +449,6 @@ class DisplayEnableCheckbox(Checkbox):
             set_background
         """
         Checkbox.__init__(self, parent, name)
-        self.ck.config(command=self.checkbox_callback)
 
         self._objectparms = (argsobj, kwargsobj)
         self._onobject = onbject
@@ -474,3 +505,15 @@ class DisplayEnableCheckbox(Checkbox):
         Calls the set_background method of the onbject
         """
         self._object_init.set_background(bg)
+
+    def get_position(self):
+        if self._object_init:
+            return parsegeometry(self._object_init.geometry())[2:]
+        else:
+            return self._x_y_position
+
+    def set_position(self, x, y):
+        if self._object_init:
+            self._object_init.geometry('%s%s' % (x, y))
+        else:
+            self._x_y_position = (x, y)
