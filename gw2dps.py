@@ -4,7 +4,7 @@ and calculates the dps done.
 """
 from ConfigParser import ConfigParser
 from ui.elements import HealthBar, DPSDisplay, Timer
-from ui.elements import DisplayEnableCheckbox, Logger
+from ui.elements import DisplayEnableCheckbox, Logger, parsegeometry
 from ctypes import windll
 import Tkinter as tk
 import aproc
@@ -213,7 +213,8 @@ class Main(tk.Tk):
         self.timer.grid(row=2, column=0)
 
 
-        self._visable_object = { 'Health Bar'  : self.health_bar,
+        self._visable_object = { 'Main'        : self,
+                                 'Health Bar'  : self.health_bar,
                                  'DPS Display' : self.dps_display,
                                  'Timer'       : self.timer}
 
@@ -247,6 +248,18 @@ class Main(tk.Tk):
             self.log_tofile(inst)
 
         self.after(self._ms, self.run)
+
+    def get_position(self):
+        """
+        Get the x, y position
+        """
+        return parsegeometry(self.geometry())[2:]
+
+    def set_position(self, x, y):
+        """
+        Set the x, y position
+        """
+        self.geometry('%s%s' % (x, y))
 
     def _onclose(self):
         """
@@ -285,12 +298,13 @@ if __name__ == '__main__':
 
         for prefix, suffixes in CONFIG_DCT.iteritems():
             for suffix in suffixes:
-                val = config.get(prefix, suffix)
-                if 'OFFSET' in suffix:
-                    val = [int(i, 0) for i in filter(None, val.split(','))]
-                else:
-                    val = int(val, 0)
-                globals()[prefix + '_' + suffix] = val
+                if config.has_option(prefix, suffix):
+                    val = config.get(prefix, suffix)
+                    if 'OFFSET' in suffix:
+                        val = [int(i, 0) for i in filter(None, val.split(','))]
+                    else:
+                        val = int(val, 0)
+                    globals()[prefix + '_' + suffix] = val
 
     app = Main()
     app.wm_attributes("-topmost", 1)
