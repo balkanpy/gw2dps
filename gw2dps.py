@@ -109,7 +109,7 @@ class DamageMeter:
                                               rtntype='float')
             if ptrail.addr and int(ptrail.value):
                 mhealth = self._proc.read_memory(ptrail.addr + 0x4, 'float')
-                if mhealth > 0 and mhealth > int(ptrail.value):
+                if mhealth > 0 and mhealth >= int(ptrail.value):
                     break
 
         return ptrail.addr, ptrail.value, mhealth
