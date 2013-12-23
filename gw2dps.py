@@ -280,7 +280,7 @@ class Main(tk.Tk):
         """
         Load the shelve if it exists
         """
-        if os.path.exists(os.path.join(_DATADIR, 'gw2dps.dat')):
+        if os.path.isfile(os.path.join(_DATADIR, 'gw2dps.dat')):
             dat = shelve.open(os.path.join(_DATADIR,'gw2dps'))
             for name, obj in self._visable_object.iteritems():
                 if dat[name]:
