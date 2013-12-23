@@ -149,7 +149,7 @@ class Proc(object):
             modname = c_buffer(280)
             psapi.GetModuleFileNameExA(self.hproc, module,
                                        modname, sizeof(modname))
-            if module_name in modname.value:
+            if module_name.lower() in modname.value.lower():
                 return self._get_base(module)
 
     def pointer_trail(self, base, offsets, size=4, rtntype='int'):
