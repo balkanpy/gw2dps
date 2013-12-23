@@ -10,10 +10,10 @@ import Tkinter as tk
 import aproc
 import os
 import sys
-import shelve
+import pickle
 
 _DIR = os.path.split(__file__)[0]
-_DATADIR = os.path.join(_DIR, 'dat')
+_POSPKL = os.path.join(_DIR, 'pos.pkl')
 
 TARGET_HEALTH_BASE = 0x013F2AB4
 TARGET_HEALTH_OFFSET = [0x34, 0x150, 0x8]
@@ -263,29 +263,25 @@ class Main(tk.Tk):
 
     def _onclose(self):
         """
-        Shelve the positions when closing the app
+        Pickle the positions when closing the app
         """
-        if not os.path.exists(_DATADIR):
-            os.makedirs(_DATADIR)
+        dat = {name: obj.get_position()
+               for name, obj in self._visable_object.iteritems()}
 
-        dat = shelve.open(os.path.join(_DATADIR, 'gw2dps'))
-        for name, obj in self._visable_object.iteritems():
-            dat[name] = obj.get_position()
-        dat.close()
-
+        with open(_POSPKL, 'wb') as fpkl:
+            pickle.dump(dat, fpkl)
         self.quit()
-
 
     def load_data(self):
         """
-        Load the shelve if it exists
+        Load the pickle if it exists
         """
-        if os.path.isfile(os.path.join(_DATADIR, 'gw2dps.dat')):
-            dat = shelve.open(os.path.join(_DATADIR,'gw2dps'))
-            for name, obj in self._visable_object.iteritems():
-                if dat[name]:
-                    obj.set_position(*dat[name])
-            dat.close()
+        if os.path.isfile(_POSPKL):
+            with open(_POSPKL, 'rb') as fpkl:
+                dat = pickle.load(fpkl)
+                for name, obj in self._visable_object.iteritems():
+                    if dat.get(name, None):
+                        obj.set_position(*dat[name])
 
 if __name__ == '__main__':
     # ability to change the memory addresses, and offesets without chaning
