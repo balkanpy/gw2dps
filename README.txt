@@ -1,3 +1,9 @@
+Note for anyone playing around with the code:
+For 1.0, win32gui and win32con libraries are required. They can be downloaded by installing ActivePython, or using pip. 
+
+pip install win32gui
+pip install win32con
+
 Guild Wars 2 DPS meter.
 
 gw2dps meter calculates the damage per second taken by the selected targeted. 
