@@ -46,6 +46,7 @@ class DPSDisplay(FloatingWindow):
         # lists for storing the dmg samples
         self._sustained_dps = []
         self._instant_dps = []
+        self._sum = False
 
         bg = kwargs.get('bg')
         # isntant dps display
@@ -59,9 +60,8 @@ class DPSDisplay(FloatingWindow):
         self._pop_up_frame2 = SummaryTab(self, text=sustained, bg=bg)
         self.sustained.grid(row=3, column=1)
 
-        for binder in [self.sustained, self.instant]:
-            binder.bind("<Enter>", self.display_on_mouse_over)
-            binder.bind("<Leave>", self.display_on_mouse_over)
+        self.bind('<Double-Button-1>', self.toggle_summary)
+
 
     def set_background(self, bg):
         for display in [self.instant, self.sustained,
@@ -69,11 +69,12 @@ class DPSDisplay(FloatingWindow):
             display.set_background(bg)
         self.config(bg=bg)
 
-    def display_on_mouse_over(self, event):
+    def toggle_summary(self, event):
         """
-        On mouseover display the summary tab
+        On double click display the summary tab
         """
-        if event.type == '7':
+        self._sum = not self._sum
+        if self._sum:
             self._pop_up_frame1.grid(row=5, column=1)
             self._pop_up_frame2.grid(row=6, column=1)
         else:
