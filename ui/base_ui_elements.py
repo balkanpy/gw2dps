@@ -3,6 +3,7 @@ UI base elements
 """
 import Tkinter as tk
 
+
 class FloatingWindow(tk.Toplevel):
     """
     TopLevel Floating window base class

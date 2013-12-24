@@ -11,6 +11,7 @@ import aproc
 import os
 import sys
 import pickle
+import win32api, win32gui, win32con
 
 _DIR = os.path.split(__file__)[0]
 _POSPKL = os.path.join(_DIR, 'pos.pkl')
@@ -195,6 +196,7 @@ class Main(tk.Tk):
         self._ms = 250
         self._sustained_dps = []
         self._instant_dps = []
+        self._second = int(1000/self._ms)
         self._tick = 0
 
         self._dmg = DamageMeter(ms=self._ms)
@@ -212,7 +214,7 @@ class Main(tk.Tk):
         self.timer.grid(row=2, column=0)
 
 
-        self._visable_object = { 'Main'        : self,
+        self.toplevel_wins = {   'Main'        : self,
                                  'Health Bar'  : self.health_bar,
                                  'DPS Display' : self.dps_display,
                                  'Timer'       : self.timer}
@@ -229,11 +231,42 @@ class Main(tk.Tk):
         Everysecond log the inst damage to the file
         """
         self._tick += 1
-        if self._tick >= int(1000/self._ms):
+        if self._tick >= self._second:
             self.logger.log(inst)
             self._tick = 0
 
+    def disable_click(self):
+        """
+        Sets WS_EX_TRANSPARENT to disable clicking
+        """
+        hwnd = self.health_bar.get_window_hwnd()
+        for ui in [self.health_bar, self.timer, self.dps_display]:
+            hwnd = ui.get_window_hwnd()
+            if hwnd:
+                val  = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+                nval = val | win32con.WS_EX_TRANSPARENT
+                if nval != val:
+                    win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, nval)
+
+    def enable_click(self):
+        """
+        Clears the WS_EX_TRANSPARENT to enable clicking
+        """
+        for ui in [self.health_bar, self.timer, self.dps_display]:
+            hwnd = ui.get_window_hwnd()
+            if hwnd:
+                val  = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+                nval = val & (~ win32con.WS_EX_TRANSPARENT)
+                if nval != val:
+                    win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, nval)
+
     def run(self):
+        state = win32api.GetAsyncKeyState(win32con.VK_MENU)
+        if state != 0:
+            self.enable_click()
+        else:
+            self.disable_click()
+
         dps, chealth, mhealth = self._dmg.target_health_values()
         inst = self._dmg.calculate_dps(self._instant_dps, dps)
         sustained = self._dmg.calculate_dps(self._sustained_dps, dps,
@@ -265,7 +298,7 @@ class Main(tk.Tk):
         Pickle the positions when closing the app
         """
         dat = {name: obj.get_position()
-               for name, obj in self._visable_object.iteritems()}
+               for name, obj in self.toplevel_wins.iteritems()}
 
         with open(_POSPKL, 'wb') as fpkl:
             pickle.dump(dat, fpkl)
@@ -278,7 +311,7 @@ class Main(tk.Tk):
         if os.path.isfile(_POSPKL):
             with open(_POSPKL, 'rb') as fpkl:
                 dat = pickle.load(fpkl)
-                for name, obj in self._visable_object.iteritems():
+                for name, obj in self.toplevel_wins.iteritems():
                     if dat.get(name, None):
                         obj.set_position(*dat[name])
 
@@ -311,5 +344,4 @@ if __name__ == '__main__':
     app.run()
     #hide the console window
     aproc.hide_window(None, sys.argv[0])
-
     app.mainloop()

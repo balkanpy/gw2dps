@@ -404,20 +404,20 @@ class Checkbox(tk.Frame):
         self.ck.grid(row=1, column=1)
 
         self._name = name
-        self.ck.config(command=self.checkbox_callback)
 
     @property
     def checkbox_value(self):
         return self.ckvalue.get()
 
-    def checkbox_callback(self):
-        raise NotImplementedError("Checkbox callback not defined")
+    def attach_callback(self, func):
+        self.ck.config(command=func)
 
 class Logger(Checkbox):
     """
     """
     def __init__(self, parent, name, fname, *args, **kwargs):
         Checkbox.__init__(self, parent, name)
+        self.attach_callback(self.checkbox_callback)
         self._fname = fname
         self._logging = False
 
@@ -434,7 +434,7 @@ class Logger(Checkbox):
                 f.write('%s\n' % value)
 
 
-class DisplayEnableCheckbox(Checkbox):
+class DisplayEnableCheckbox:
     """
     Check box that starts, and closes the display window
     """
@@ -448,7 +448,8 @@ class DisplayEnableCheckbox(Checkbox):
             attributes
             set_background
         """
-        Checkbox.__init__(self, parent, name)
+        self.ck = Checkbox(parent, name)
+        self.ck.attach_callback(self.checkbox_callback)
 
         self._objectparms = (argsobj, kwargsobj)
         self._onobject = onbject
@@ -456,13 +457,16 @@ class DisplayEnableCheckbox(Checkbox):
         self._x_y_position = None
         self._attributes = []
 
+    def grid(self, *args, **kwargs):
+        self.ck.grid(*args, **kwargs)
+
     def checkbox_callback(self):
         """
         Checkbox event callback
         The windows position is saved when the checkbox is unckecked, so that
         next time it appears in the same position
         """
-        if self.ckvalue.get():
+        if self.ck.checkbox_value:
             # checkbox is selected, open up the window
             self._object_init = self._onobject(*self._objectparms[0],
                                                 **self._objectparms[1])
@@ -493,18 +497,8 @@ class DisplayEnableCheckbox(Checkbox):
         self._attributes.append((arg, value))
 
     @ifobject
-    def attributes(self, arg, value):
-        """
-        Calls the attributes method of the onbject
-        """
-        self._object_init.attributes(arg, value)
-
-    @ifobject
-    def set_background(self, bg):
-        """
-        Calls the set_background method of the onbject
-        """
-        self._object_init.set_background(bg)
+    def get_window_hwnd(self):
+        return int(self.wm_frame(), 0)
 
     def get_position(self):
         if self._object_init:
@@ -517,3 +511,8 @@ class DisplayEnableCheckbox(Checkbox):
             self._object_init.geometry('%s%s' % (x, y))
         else:
             self._x_y_position = (x, y)
+
+    def __getattr__(self, attr):
+        if self._object_init:
+            if hasattr(self._object_init, attr):
+                return getattr(self._object_init, attr)
