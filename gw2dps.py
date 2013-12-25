@@ -235,38 +235,35 @@ class Main(tk.Tk):
             self.logger.log(inst)
             self._tick = 0
 
-    def disable_click(self):
+    def click_control(self, control):
         """
-        Sets WS_EX_TRANSPARENT to disable clicking
+        Disables/Enables click control.
+
+        control = True to enable click
+        control = False to disable click
         """
-        hwnd = self.health_bar.get_window_hwnd()
+        cal_nval = lambda val: val & (~ win32con.WS_EX_TRANSPARENT) if control\
+                              else val | win32con.WS_EX_TRANSPARENT
+
+
         for ui in [self.health_bar, self.timer, self.dps_display]:
             hwnd = ui.get_window_hwnd()
             if hwnd:
                 val  = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-                nval = val | win32con.WS_EX_TRANSPARENT
+                nval = cal_nval(val)
                 if nval != val:
                     win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, nval)
 
-    def enable_click(self):
+    def check_control_loop(self):
         """
-        Clears the WS_EX_TRANSPARENT to enable clicking
+        Poll to see if the ALT key is pressed, if it is, allow control, else
+        control is disabled
         """
-        for ui in [self.health_bar, self.timer, self.dps_display]:
-            hwnd = ui.get_window_hwnd()
-            if hwnd:
-                val  = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-                nval = val & (~ win32con.WS_EX_TRANSPARENT)
-                if nval != val:
-                    win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, nval)
+        state = win32api.GetAsyncKeyState(win32con.VK_MENU)
+        self.click_control(state != 0)
+        self.after(100, self.check_control_loop)
 
     def run(self):
-        state = win32api.GetAsyncKeyState(win32con.VK_MENU)
-        if state != 0:
-            self.enable_click()
-        else:
-            self.disable_click()
-
         dps, chealth, mhealth = self._dmg.target_health_values()
         inst = self._dmg.calculate_dps(self._instant_dps, dps)
         sustained = self._dmg.calculate_dps(self._sustained_dps, dps,
@@ -342,6 +339,7 @@ if __name__ == '__main__':
     app.dps_display.set_object_attributes('-alpha', 0.6)
     app.timer.set_object_attributes('-alpha', 0.6)
     app.run()
+    app.check_control_loop()
     #hide the console window
     aproc.hide_window(None, sys.argv[0])
     app.mainloop()
