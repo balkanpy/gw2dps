@@ -332,8 +332,8 @@ CONFIGDATA =\
 # charwidth  - character span of the displayed item ( changes width of the ui)
 # background - background of the ui. can be word or hex value.
 #              If hex value it should begin with #
-# alpha      - Transpernacy setting. set as 1 for no transpercy.
-#              Transpernacy increase as alpha approaches 0
+# alpha      - Transparency setting. set as 1 for no transparency
+#              Transparency increase as alpha approaches 0
 #
 # For DPS settings:
 # norm_color - font color of the number displayed when it is not a max
