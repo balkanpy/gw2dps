@@ -191,7 +191,7 @@ class DamageMeter:
 
 
 class Main(tk.Tk):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config_file, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
         self._ms = 250
         self._sustained_dps = []
@@ -202,17 +202,19 @@ class Main(tk.Tk):
         self._dmg = DamageMeter(ms=self._ms)
 
         self.dps_display = DisplayEnableCheckbox(self, "Display DPS",
-                                                 DPSDisplay, bg=BACKGROUND)
+                                                 DPSDisplay, bg=BACKGROUND,
+                                                 config=config_file)
         self.dps_display.grid(row=0, column=0)
 
         self.health_bar = DisplayEnableCheckbox(self, "Display Taget Health",
-                                                HealthBar, bg=BACKGROUND)
+                                                HealthBar, bg=BACKGROUND,
+                                                config=config_file)
         self.health_bar.grid(row=1, column=0)
 
         self.timer = DisplayEnableCheckbox(self, "Timer", Timer,
-                                           self._dmg, bg=BACKGROUND)
+                                           self._dmg, bg=BACKGROUND,
+                                           config=config_file)
         self.timer.grid(row=2, column=0)
-
 
         self.toplevel_wins = {   'Main'        : self,
                                  'Health Bar'  : self.health_bar,
@@ -253,6 +255,8 @@ class Main(tk.Tk):
                 nval = cal_nval(val)
                 if nval != val:
                     win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, nval)
+
+        return control
 
     def check_control_loop(self):
         """
@@ -312,6 +316,75 @@ class Main(tk.Tk):
                     if dat.get(name, None):
                         obj.set_position(*dat[name])
 
+
+CONFIGDATA =\
+"""# gw2dps UI configuration file
+# DON'T change the names in the square brackets []
+# Options:
+# font       - name of the font. This can be any font that is supported
+#              by your system
+# size       - size of the text
+# color      - color of the text. This can be a word, such as
+#              'white' (no quotes) or the
+#              hex value code
+# typeface   - typeface of the text. can be bold, italic, or ''.
+#              For no typeface, use empty quotes ("" or '')
+# charwidth  - character span of the displayed item ( changes width of the ui)
+# background - background of the ui. can be word or hex value.
+#              If hex value it should begin with #
+# alpha      - Transpernacy setting. set as 1 for no transpercy.
+#              Transpernacy increase as alpha approaches 0
+#
+# For DPS settings:
+# norm_color - font color of the number displayed when it is not a max
+#              or combat avg
+# max_color  - font color of the max value
+# avg_color  - font color of the combat average value
+#===============================================
+
+#===============================================
+[DPS]
+font=Times
+size=15
+color=white
+typeface=bold
+charwidth=8
+background=#222222
+norm_color=white
+max_color=red
+avg_color=orange
+alpha=0.6
+#===============================================
+
+#===============================================
+[Health Bar]
+font=Times
+size=16
+color=#A4F3A7
+typeface=bold
+charwidth=10
+background=#222222
+alpha=0.6
+#===============================================
+
+#===============================================
+[DPS Summary]
+font=Helvetica
+size=10
+color=white
+#===============================================
+
+#===============================================
+[Timer]
+font=
+size=12
+color=white
+typeface=bold
+background=#222222
+alpha=0.6
+#===============================================
+"""
+
 if __name__ == '__main__':
     # ability to change the memory addresses, and offesets without chaning
     # in the file. This is useful then packaged as an exe. If there is a
@@ -331,15 +404,17 @@ if __name__ == '__main__':
                         val = int(val, 0)
                     globals()[prefix + '_' + suffix] = val
 
-    app = Main()
+    # check if the config file exists, if not, create it from the default
+    # value
+    config_file = os.path.join(_DIR, 'config.txt')
+    if not os.path.isfile(config_file):
+        with open(config_file, 'w') as f:
+            f.write(CONFIGDATA)
+
+    app = Main(config_file)
     app.wm_attributes("-topmost", 1)
     app.resizable(width=False, height=False)
     app.wm_title("DPS Display by balkanpy")
-    app.health_bar.set_object_attributes('-alpha', 0.6)
-    app.dps_display.set_object_attributes('-alpha', 0.6)
-    app.timer.set_object_attributes('-alpha', 0.6)
     app.run()
     app.check_control_loop()
-    #hide the console window
-    aproc.hide_window(None, sys.argv[0])
     app.mainloop()
