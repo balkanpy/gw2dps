@@ -3,12 +3,13 @@ UI base elements
 """
 import Tkinter as tk
 
+
 class FloatingWindow(tk.Toplevel):
     """
     TopLevel Floating window base class
     """
     def __init__(self, *args, **kwargs):
-        tk.Toplevel.__init__(self, *args, **kwargs)
+        tk.Toplevel.__init__(self, *args, bg=kwargs.get('bg'))
         self.overrideredirect(True)
         self.wm_attributes('-toolwindow', 1)
         self.wm_attributes("-topmost", 1)
@@ -50,16 +51,18 @@ class Display(tk.Frame):
     """
     Base Display Class
     """
-    def __init__(self, root, text, refresh_ms, *args, **kwargs):
-        tk.Frame.__init__(self, root, *args, **kwargs)
+    def __init__(self, root, text, refresh_ms, defdisplay, *args, **kwargs):
+        tk.Frame.__init__(self, root, *args, bg=kwargs.get('bg'))
         self._label = tk.Label(self, **kwargs)
         self._label.grid(row=0, column=0)
 
         self._ms = refresh_ms
         self._max_display_ticks = 0
-        self._display_info = {'value': 0,
-                              'font': ('times',15, 'bold'),
-                              'colour': 'white'}
+        self._display_info = {'value' : 0,
+                              'font'  : defdisplay.get('font',
+                                                       ('times', 15, 'bold')),
+                              'colour': defdisplay.get('color', 'white')}
+        self._display_definfo = self._display_info.copy()
 
     def freeze_display(self, value, period, **kwargs):
         """
@@ -70,10 +73,10 @@ class Display(tk.Frame):
         self._set_display(value, **kwargs)
 
     def _set_display(self, value,
-                     font='time',
-                     size=15,
-                     colour='white',
-                     typeface='bold',
+                     font='',
+                     size=None,
+                     colour='',
+                     typeface='',
                      overwrite=False):
         """
         Set the display with the specified value. The kwargs determined the
@@ -81,10 +84,15 @@ class Display(tk.Frame):
 
         overwrite - change display even if it was "frozen"
         """
+
         if not self._isfrozen() or overwrite:
-            self._display_info['font'] = (font, size, typeface)
+            self._display_info['font'] = \
+                    tuple([self._display_definfo['font'][i] if not val else val
+                           for i,val in enumerate([font, size, typeface])])
             self._display_info['value'] = value
-            self._display_info['colour'] = colour
+            self._display_info['colour'] = self._display_definfo['colour'] \
+                                           if not colour else\
+                                           colour
 
     def _isfrozen(self):
         """
@@ -109,5 +117,4 @@ class Display(tk.Frame):
         value = self._display_info['value']
         font = self._display_info['font']
         fg = self._display_info['colour']
-
         self._label.config(text = '%s' % value, fg=fg, anchor=tk.W, font=font)

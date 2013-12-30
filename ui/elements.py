@@ -3,7 +3,26 @@ UI Elements for the DPS Display
 """
 import Tkinter as tk
 from base_ui_elements import FloatingWindow, Display
+from config import config
 import re, time
+
+
+def getconfig(name, kwargs, additional=None):
+    conf = {'bg': kwargs.get('bg')}
+    alpha = 1
+    if 'config' in kwargs:
+        con = config(kwargs.get('config'),  name, additional)
+        dct = con[0]
+        alpha = con[1]
+        conf.update(dct)
+
+    return conf, alpha
+
+def dict_removed_key(dct, key):
+    ndct = dct.copy()
+    if key in ndct:
+        del ndct[key]
+    return ndct
 
 def parsegeometry(geometry):
     """
@@ -39,29 +58,37 @@ class DPSDisplay(FloatingWindow):
     FloatingWindow of the DPS Display
     """
     def __init__(self, *args, **kwargs):
-        FloatingWindow.__init__(self,  *args, **kwargs)
+        additional = {'max_color': 'red',
+                      'avg_color': 'orange',
+                      'norm_color':'white'}
+        conf, alpha = getconfig('DPS', kwargs, additional)
+
+        sumconf, sumalpha = getconfig("DPS Summary", kwargs)
+        sumconf['bg'] = conf['bg']
+        sumconf.update(dict_removed_key(additional, 'norm_color'))
+
+        FloatingWindow.__init__(self,  *args, bg=conf.get('bg'))
 
         self._ms = kwargs.get('ms', 250)
 
         # lists for storing the dmg samples
         self._sustained_dps = []
         self._instant_dps = []
-
-        bg = kwargs.get('bg')
+        self._sum = False
         # isntant dps display
         instant, sustained = "Instant:", "Sustained:"
-        self.instant = DamageDisplay(self, instant, self._ms, bg=bg)
+
+        self.instant = DamageDisplay(self, instant, self._ms, additional, **conf)
         self.instant.grid(row=2, column=1)
-        self._pop_up_frame1 = SummaryTab(self, text=instant, bg=bg)
+        self._pop_up_frame1 = SummaryTab(self, text=instant, **sumconf)
 
         # sustainted dps
-        self.sustained = DamageDisplay(self, sustained, self._ms, bg=bg)
-        self._pop_up_frame2 = SummaryTab(self, text=sustained, bg=bg)
+        self.sustained = DamageDisplay(self, sustained, self._ms, additional, **conf)
+        self._pop_up_frame2 = SummaryTab(self, text=sustained, **sumconf)
         self.sustained.grid(row=3, column=1)
 
-        for binder in [self.sustained, self.instant]:
-            binder.bind("<Enter>", self.display_on_mouse_over)
-            binder.bind("<Leave>", self.display_on_mouse_over)
+        self.attributes('-alpha', alpha)
+        self.bind('<Double-Button-1>', self.toggle_summary)
 
     def set_background(self, bg):
         for display in [self.instant, self.sustained,
@@ -69,11 +96,12 @@ class DPSDisplay(FloatingWindow):
             display.set_background(bg)
         self.config(bg=bg)
 
-    def display_on_mouse_over(self, event):
+    def toggle_summary(self, event):
         """
-        On mouseover display the summary tab
+        On double click display the summary tab
         """
-        if event.type == '7':
+        self._sum = not self._sum
+        if self._sum:
             self._pop_up_frame1.grid(row=5, column=1)
             self._pop_up_frame2.grid(row=6, column=1)
         else:
@@ -95,14 +123,16 @@ class Timer(FloatingWindow):
         """
         Timer to record the time it took for the locked target to die.
         """
-        FloatingWindow.__init__(self, *args, **kwargs)
-        self._timer_name = tk.Label(self, text='Timer:', fg='white',
-                 font=(None, 12, 'bold'), **kwargs)
+        conf, alpha = getconfig("Timer", kwargs)
+
+        FloatingWindow.__init__(self, *args, bg=kwargs.get('bg'))
+        self._timer_name = tk.Label(self, text='Timer:',
+                                    **dict_removed_key(conf, 'width'))
         self._timer_name.grid(row=0,column=0)
 
+        conf['width'] = 12
         self.label = tk.Label(self, text='Lock Target',
-                              font=(None, 12, 'bold'), anchor=tk.CENTER,
-                              fg='white', width=12, **kwargs)
+                              anchor=tk.CENTER, **conf)
         self.label.grid(row=0, column=1)
 
         self._dmg = dmg_object
@@ -113,6 +143,8 @@ class Timer(FloatingWindow):
         self._time, self._ptime = 0, 0
         self._stop = False
         self._cstate = 0
+
+        self.attributes('-alpha', alpha)
 
     def set_background(self, bg):
         """
@@ -176,32 +208,31 @@ class HealthBar(FloatingWindow):
     FloatingWindow Displaying the target health
     """
     def __init__(self, *args, **kwargs):
+        conf, alpha = getconfig('Health Bar', kwargs)
+
         FloatingWindow.__init__(self, *args, **kwargs)
+
         self._target_health =  tk.Label(self, text='%s'%(0),
-                                       font=("Times", 16, 'bold'), fg='#A4F3A7',
-                                       anchor=tk.E, width=10,
-                                       bg=kwargs.get('bg'))
+                               anchor=tk.E, **conf)
 
         self._other = tk.Label(self, text='/',
-                   font=("Times", 16, 'bold'), fg='#A4F3A7',
-                   anchor=tk.CENTER,
-                   bg=kwargs.get('bg'))
+                               anchor=tk.CENTER,
+                               **dict_removed_key(conf, 'width'))
+
         self._other.grid(row=0, column=1)
 
         self._target_max_health = tk.Label(self, text='%s'%(0),
-                                       font=("Times", 16, 'bold'), fg='#A4F3A7',
-                                       anchor=tk.W, width=10,
-                                       bg=kwargs.get('bg'))
+                                           anchor=tk.W, **conf)
 
 
         self._target_max_health.grid(row=0, column=2)
         self._target_health.grid(row=0, column=0)
+
         self._percent_health = tk.Label(self, text='%s'%(0),
-                                       font=("Times", 16, 'bold'), fg='#A4F3A7',
-                                       anchor=tk.CENTER, width=21,
-                                       bg=kwargs.get('bg'))
+                                       anchor=tk.CENTER, **conf)
 
         self._percent_view = False
+        self.attributes('-alpha', alpha)
         self.bind('<Double-Button-1>', self.change_view)
 
     def change_view(self, event):
@@ -241,8 +272,8 @@ class HealthBar(FloatingWindow):
             percent = current_health/max_health*100
 
         self._percent_health.config(text='%s'% int(percent) + '%')
-        self._target_health.config(text='%s' % (int(current_health)))
-        self._target_max_health.config(text='%s' % (int(max_health)))
+        self._target_health.config(text='{:,}'.format(int(current_health)))
+        self._target_max_health.config(text='{:,}'.format(int(max_health)))
 
 
 class SummaryTab(tk.Frame):
@@ -256,19 +287,27 @@ class SummaryTab(tk.Frame):
         else:
             text = ''
 
-        tk.Frame.__init__(self, *args, **kwargs)
-        self._name_label = tk.Label(self, text=text, font=("Helvetica", 8),
-                 width=8, fg='white', bg=kwargs.get('bg'),
-                 anchor=tk.E)
+        tk.Frame.__init__(self, *args, bg=kwargs.get('bg'))
+
+        kwargs['width'] = 8
+
+        if 'max_color' in kwargs:
+            max_colour = kwargs.pop('max_color')
+
+        if 'avg_color' in kwargs:
+            avg_colour = kwargs.pop('avg_color')
+
+        self._name_label = tk.Label(self, text=text, anchor=tk.E, **kwargs)
 
         self._name_label.grid(row=0, column=0)
 
         self._value1label = tk.Label(self, text='', font=("Helvetica", 8),
                                      width=6, bg=kwargs.get('bg'),
-                                     fg='red', anchor=tk.W)
+                                     fg=max_colour,
+                                     anchor=tk.W)
 
         self._value2label = tk.Label(self, text='', font=("Helvetica", 8),
-                                     fg='orange',width=6,
+                                     fg=avg_colour,width=6,
                                      bg=kwargs.get('bg'), anchor=tk.W)
 
         self._value1label.grid(row=0, column=1)
@@ -301,30 +340,29 @@ class DamageDisplay(Display):
     """
     Frame used for displaying the DPS
     """
-    def __init__(self, root, text, refresh_ms, *args, **kwargs):
-        Display.__init__(self, root, text, refresh_ms, *args, **kwargs)
+    def __init__(self, root, text, refresh_ms, optiondct, *args, **kwargs):
         bg = kwargs.get('bg')
+        Display.__init__(self, root, text, refresh_ms,
+                         {'color': optiondct.get('norm_color', 'white'),
+                          'font' : kwargs['font']},
+                          *args, bg=bg)
 
-        self._name_label = tk.Label(self, font=('times', 15, 'bold'),
-                                    borderwidth=0, text=text, bg=bg, fg='white',
-                                    anchor=tk.E, width=8)
+        self._name_label = tk.Label(self, text=text, anchor=tk.E, **kwargs)
 
         self._name_label.grid(row=0)
 
+        kwargs['width'] = 6
         self._label = tk.Label(self, font=(None, 15), width=6, bg=bg)
         self._label.grid(row=0, column=1)
 
         self._ms = refresh_ms
         self._max_display_ticks = 0
+        self._max_colour = optiondct.get('max_color', 'red')
 
         self._incombat_samples = []
         self.prev_incombat_avg = 0
+        self._avg_colour = optiondct.get('avg_color', 'orange')
         self.max = 0
-
-        # dict to store the info about the display
-        self._display_info = {'value': 0,
-                              'font': ('times',15, 'bold'),
-                              'colour': 'white'}
 
     def _display_max(self, period=3):
         """
@@ -332,7 +370,7 @@ class DamageDisplay(Display):
 
         period - Number of seconds to keep the display
         """
-        self.freeze_display(self.max, period, colour='red')
+        self.freeze_display(self.max, period, colour=self._max_colour)
 
     def reset_display(self):
         """
@@ -374,7 +412,7 @@ class DamageDisplay(Display):
                 if new_lst:
                     self.prev_incombat_avg = sum(new_lst)/len(new_lst)
                     self.freeze_display(self.prev_incombat_avg, 5,
-                                        colour='orange')
+                                        colour=self._avg_colour)
                 self._incombat_samples = []
 
         self._set_display(dps)
@@ -404,20 +442,20 @@ class Checkbox(tk.Frame):
         self.ck.grid(row=1, column=1)
 
         self._name = name
-        self.ck.config(command=self.checkbox_callback)
 
     @property
     def checkbox_value(self):
         return self.ckvalue.get()
 
-    def checkbox_callback(self):
-        raise NotImplementedError("Checkbox callback not defined")
+    def attach_callback(self, func):
+        self.ck.config(command=func)
 
 class Logger(Checkbox):
     """
     """
     def __init__(self, parent, name, fname, *args, **kwargs):
         Checkbox.__init__(self, parent, name)
+        self.attach_callback(self.checkbox_callback)
         self._fname = fname
         self._logging = False
 
@@ -434,7 +472,7 @@ class Logger(Checkbox):
                 f.write('%s\n' % value)
 
 
-class DisplayEnableCheckbox(Checkbox):
+class DisplayEnableCheckbox:
     """
     Check box that starts, and closes the display window
     """
@@ -448,7 +486,8 @@ class DisplayEnableCheckbox(Checkbox):
             attributes
             set_background
         """
-        Checkbox.__init__(self, parent, name)
+        self.ck = Checkbox(parent, name)
+        self.ck.attach_callback(self.checkbox_callback)
 
         self._objectparms = (argsobj, kwargsobj)
         self._onobject = onbject
@@ -456,13 +495,16 @@ class DisplayEnableCheckbox(Checkbox):
         self._x_y_position = None
         self._attributes = []
 
+    def grid(self, *args, **kwargs):
+        self.ck.grid(*args, **kwargs)
+
     def checkbox_callback(self):
         """
         Checkbox event callback
         The windows position is saved when the checkbox is unckecked, so that
         next time it appears in the same position
         """
-        if self.ckvalue.get():
+        if self.ck.checkbox_value:
             # checkbox is selected, open up the window
             self._object_init = self._onobject(*self._objectparms[0],
                                                 **self._objectparms[1])
@@ -493,18 +535,8 @@ class DisplayEnableCheckbox(Checkbox):
         self._attributes.append((arg, value))
 
     @ifobject
-    def attributes(self, arg, value):
-        """
-        Calls the attributes method of the onbject
-        """
-        self._object_init.attributes(arg, value)
-
-    @ifobject
-    def set_background(self, bg):
-        """
-        Calls the set_background method of the onbject
-        """
-        self._object_init.set_background(bg)
+    def get_window_hwnd(self):
+        return int(self.wm_frame(), 0)
 
     def get_position(self):
         if self._object_init:
@@ -517,3 +549,8 @@ class DisplayEnableCheckbox(Checkbox):
             self._object_init.geometry('%s%s' % (x, y))
         else:
             self._x_y_position = (x, y)
+
+    def __getattr__(self, attr):
+        if self._object_init:
+            if hasattr(self._object_init, attr):
+                return getattr(self._object_init, attr)
